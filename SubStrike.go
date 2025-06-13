@@ -312,8 +312,9 @@ func progressBar(current, total int64) string {
 
 func main() {
 	// Definição dos flags de linha de comando
+	var domain = flag.String("d", "", "Domínio único para enumerar (ex.: api.prod.evil.com)")
+	var domainsFile = flag.String("f", "", "Arquivo com lista de domínios")
 	var wordlistFile = flag.String("w", "/usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt", "Arquivo de wordlist")
-	var domainsFile = flag.String("f", "", "Arquivo com lista de domínios (obrigatório)")
 	var outputFile = flag.String("o", "resultado.txt", "Arquivo de saída")
 	var workers = flag.Int("t", 500, "Número de workers/threads")
 	var timeoutMs = flag.Int("timeout", 1500, "Timeout em milissegundos")
@@ -324,39 +325,45 @@ func main() {
 	// Verifica argumentos posicionais não utilizados
 	if flag.NArg() > 0 {
 		fmt.Printf("❌ Erro: Argumentos posicionais não suportados: %v\n", flag.Args())
-		fmt.Println("Use flags como -timeout para especificar valores, ex.: -timeout 12500")
+		fmt.Println("Use flags como -d, -f, -w, -o, -t, -timeout, -debug para especificar valores")
 		fmt.Println("\nUso:")
-		fmt.Println("  -f <arquivo>    Arquivo com lista de domínios (obrigatório)")
+		fmt.Println("  -d <domínio>    Domínio único para enumerar (ex.: api.prod.evil.com)")
+		fmt.Println("  -f <arquivo>    Arquivo com lista de domínios")
 		fmt.Println("  -w <arquivo>    Arquivo de wordlist (padrão: /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt)")
 		fmt.Println("  -o <arquivo>    Arquivo de saída (padrão: resultado.txt)")
 		fmt.Println("  -t <número>     Número de workers/threads (padrão: 500, mínimo: 1, máximo: 1000)")
 		fmt.Println("  -timeout <ms>   Timeout em milissegundos (padrão: 1500, mínimo: 100)")
 		fmt.Println("  -debug          Ativar modo debug com logs detalhados")
 		fmt.Println("\nExemplo:")
+		fmt.Println("  go run combinateDomains.go -d api.prod.evil.com -w wordlist.txt -o resultados.txt -t 20 -timeout 12500 -debug")
 		fmt.Println("  go run combinateDomains.go -f dominios.txt -w wordlist.txt -o resultados.txt -t 20 -timeout 12500 -debug")
 		os.Exit(1)
 	}
 
 	// Validação das flags
-	if *domainsFile == "" {
-		fmt.Println("❌ Erro: O arquivo de domínios é obrigatório!")
+	if *domain == "" && *domainsFile == "" {
+		fmt.Println("❌ Erro: Um dos parâmetros -d ou -f é obrigatório!")
 		fmt.Println("\nUso:")
-		fmt.Println("  -f <arquivo>    Arquivo com lista de domínios (obrigatório)")
+		fmt.Println("  -d <domínio>    Domínio único para enumerar (ex.: api.prod.evil.com)")
+		fmt.Println("  -f <arquivo>    Arquivo com lista de domínios")
 		fmt.Println("  -w <arquivo>    Arquivo de wordlist (padrão: /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt)")
 		fmt.Println("  -o <arquivo>    Arquivo de saída (padrão: resultado.txt)")
 		fmt.Println("  -t <número>     Número de workers/threads (padrão: 500, mínimo: 1, máximo: 1000)")
 		fmt.Println("  -timeout <ms>   Timeout em milissegundos (padrão: 1500, mínimo: 100)")
 		fmt.Println("  -debug          Ativar modo debug com logs detalhados")
 		fmt.Println("\nExemplo:")
+		fmt.Println("  go run combinateDomains.go -d api.prod.evil.com -w wordlist.txt -o resultados.txt -t 20 -timeout 12500 -debug")
 		fmt.Println("  go run combinateDomains.go -f dominios.txt -w wordlist.txt -o resultados.txt -t 20 -timeout 12500 -debug")
 		os.Exit(1)
 	}
-
+	if *domain != "" && *domainsFile != "" {
+		fmt.Println("❌ Erro: Não é possível usar -d e -f ao mesmo tempo!")
+		os.Exit(1)
+	}
 	if *workers < 1 || *workers > 1000 {
 		fmt.Printf("❌ Erro: Número de workers inválido (%d). Deve estar entre 1 e 1000.\n", *workers)
 		os.Exit(1)
 	}
-
 	if *timeoutMs < 100 {
 		fmt.Printf("❌ Erro: Timeout inválido (%d ms). Deve ser maior ou igual a 100 ms.\n", *timeoutMs)
 		os.Exit(1)
@@ -379,7 +386,11 @@ func main() {
 
 	fmt.Println("🔍 Subdomain Scanner")
 	fmt.Println("==================")
-	fmt.Printf("📁 Domínios: %s\n", *domainsFile)
+	if *domain != "" {
+		fmt.Printf("🌐 Domínio: %s\n", *domain)
+	} else {
+		fmt.Printf("📁 Domínios: %s\n", *domainsFile)
+	}
 	fmt.Printf("📝 Wordlist: %s\n", *wordlistFile)
 	fmt.Printf("💾 Output: %s\n", *outputFile)
 	fmt.Printf("⚡ Workers: %d\n", maxWorkers)
@@ -388,7 +399,11 @@ func main() {
 	fmt.Println()
 
 	debugLog("=== CONFIGURAÇÕES ===")
-	debugLog("Domínios: %s", *domainsFile)
+	if *domain != "" {
+		debugLog("Domínio: %s", *domain)
+	} else {
+		debugLog("Domínios: %s", *domainsFile)
+	}
 	debugLog("Wordlist: %s", *wordlistFile)
 	debugLog("Output: %s", *outputFile)
 	debugLog("Workers: %d", maxWorkers)
@@ -403,11 +418,18 @@ func main() {
 	}
 	fmt.Printf("[*] Carregadas %d palavras\n", len(words))
 
+	// Lê domínios (de -d ou -f)
 	fmt.Println("[*] Lendo domínios...")
-	domains, err := readDomains(*domainsFile)
-	if err != nil {
-		fmt.Println("Erro ao ler domínios:", err)
-		os.Exit(1)
+	var domains []string
+	if *domain != "" {
+		domains = []string{cleanDomain(*domain)}
+		fmt.Println("[*] Usando domínio fornecido diretamente")
+	} else {
+		domains, err = readDomains(*domainsFile)
+		if err != nil {
+			fmt.Println("Erro ao ler domínios:", err)
+			os.Exit(1)
+		}
 	}
 	fmt.Printf("[*] Carregados %d domínios\n", len(domains))
 
@@ -420,7 +442,6 @@ func main() {
 	}
 
 	// Calcula total de combinações
-	// Para cada domínio, multiplica pelo número de palavras e pelo número de posições intermediárias (len(parts)-1)
 	totalCombinations := int64(0)
 	for _, domain := range domains {
 		parts := strings.Split(domain, ".")
