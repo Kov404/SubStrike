@@ -78,7 +78,6 @@ Enumerate subdomains for `api.prod.evil.com` using a small wordlist with 50 work
  ```
 
 Notes
-Inspired by tools like Sublist3r and Amass.
 Thanks to SecLists for providing high-quality wordlists.
 
 Contact
